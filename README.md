@@ -9,7 +9,7 @@ An AI-powered document review workspace that transforms unstructured legal contr
 
 ## 🚀 Features
 
-- **AI-Powered Extraction**: Automatically extract key clauses, dates, amounts, and entities from PDFs using Google Gemini 1.5 Pro / 3.0.
+- **AI-Powered Extraction**: Automatically extract key clauses, dates, amounts, and entities from PDFs using Google Gemini 2.5 Pro / 3.0.
 - **High-Fidelity Conversion**: Uses **Docling** (running locally) to convert PDFs and DOCX files to clean Markdown text, preserving formatting and structure without hallucination.
 - **Dynamic Schema**: Define columns with natural language prompts (e.g., "What is the governing law?").
 - **Verification & Citations**: Click any extracted cell to view the exact source quote highlighted in the original document.
