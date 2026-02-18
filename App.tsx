@@ -14,6 +14,8 @@ import { ColumnTemplate } from './utils/columnTemplates';
 import { batchExport } from './services/batchExport';
 import { SAMPLE_COLUMNS } from './utils/sampleData';
 import { useTheme } from './hooks/useTheme';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
 
 // Available Models
 const MODELS = [
@@ -73,6 +75,62 @@ const App: React.FC = () => {
 
   // Column Template State
   const [isTemplateMenuOpen, setIsTemplateMenuOpen] = useState(false);
+
+  // Keyboard Shortcuts Help State
+  const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
+
+  // Keyboard Shortcuts
+  useKeyboardShortcuts([
+    {
+      key: '?',
+      description: 'Show shortcuts help',
+      action: () => setIsShortcutsHelpOpen(true),
+    },
+    {
+      key: 'e',
+      ctrl: true,
+      description: 'Export CSV',
+      action: () => { if (documents.length > 0) batchExport({ documents, columns, results, projectName, format: 'csv' }); },
+    },
+    {
+      key: 'n',
+      ctrl: true,
+      description: 'New column',
+      action: () => {
+        // Simulate clicking add column by creating a rect at center of screen
+        const rect = new DOMRect(window.innerWidth / 2 - 150, 80, 300, 40);
+        setAddColumnAnchor(rect);
+        setEditingColumnId(null);
+      },
+    },
+    {
+      key: 's',
+      ctrl: true,
+      description: 'Save project',
+      action: () => {
+        const project = handleSaveCurrentProject();
+        saveProject(project).then(() => {
+          // Brief visual feedback could be added here
+          console.log('Project saved');
+        });
+      },
+    },
+    {
+      key: 'Escape',
+      description: 'Close sidebar/modal',
+      action: () => {
+        if (isShortcutsHelpOpen) { setIsShortcutsHelpOpen(false); return; }
+        if (addColumnAnchor) { handleCloseMenu(); return; }
+        if (sidebarMode !== 'none') { setSidebarMode('none'); setSelectedCell(null); setPreviewDocId(null); return; }
+      },
+    },
+    {
+      key: '/',
+      ctrl: true,
+      description: 'Toggle chat',
+      action: () => toggleChat(),
+    },
+  ]);
 
   // Handlers
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -795,6 +853,12 @@ const App: React.FC = () => {
         isOpen={isTemplateMenuOpen}
         onClose={() => setIsTemplateMenuOpen(false)}
         onApplyTemplate={handleApplyTemplate}
+      />
+
+      {/* Keyboard Shortcuts Help */}
+      <KeyboardShortcutsHelp
+        isOpen={isShortcutsHelpOpen}
+        onClose={() => setIsShortcutsHelpOpen(false)}
       />
 
       {/* Project Manager Modal */}
