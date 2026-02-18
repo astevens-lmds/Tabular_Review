@@ -105,17 +105,32 @@ export const DataGrid: React.FC<DataGridProps> = ({
     
     const isSelected = selectedCell?.docId === docId && selectedCell?.colId === colId;
 
+    // Confidence-based color coding for cells
+    const confidenceColors = cell.confidence === 'High' 
+      ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-l-2 border-l-emerald-400'
+      : cell.confidence === 'Medium'
+      ? 'bg-amber-50/60 dark:bg-amber-950/30 border-l-2 border-l-amber-400'
+      : 'bg-red-50/60 dark:bg-red-950/30 border-l-2 border-l-red-400';
+
     return (
-      <div className={`flex items-center justify-between w-full h-full ${isTextWrapEnabled ? 'items-start py-1' : ''}`}>
+      <div className={`flex items-center justify-between w-full h-full rounded-sm px-1 -mx-1 ${confidenceColors} ${isTextWrapEnabled ? 'items-start py-1' : ''}`}>
         <span 
             className={`text-sm ${isSelected ? 'font-medium' : ''} ${isTextWrapEnabled ? 'whitespace-pre-wrap break-words' : 'truncate max-w-[180px]'}`} 
             title={cell.value}
         >
             {cell.value}
         </span>
-        <div className={`flex items-center gap-1 ${isTextWrapEnabled ? 'mt-1' : ''}`}>
+        <div className={`flex items-center gap-1 flex-shrink-0 ${isTextWrapEnabled ? 'mt-1' : ''}`}>
             {cell.status === 'verified' && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
-            {cell.confidence === 'Low' && cell.status !== 'verified' && <AlertCircle className="w-3 h-3 text-amber-500" />}
+            {cell.confidence === 'High' && cell.status !== 'verified' && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" title="High confidence (>80%)" />
+            )}
+            {cell.confidence === 'Medium' && cell.status !== 'verified' && (
+              <span className="w-2 h-2 rounded-full bg-amber-400" title="Medium confidence (50-80%)" />
+            )}
+            {cell.confidence === 'Low' && cell.status !== 'verified' && (
+              <span className="w-2 h-2 rounded-full bg-red-400" title="Low confidence (<50%)" />
+            )}
         </div>
       </div>
     );
@@ -215,8 +230,14 @@ export const DataGrid: React.FC<DataGridProps> = ({
                     <Plus className="w-4 h-4" />
                 </button>
             </th>
-            {/* Fill remaining header space */}
-             <th className="border-b border-slate-200 bg-slate-50/30"></th>
+            {/* Confidence Legend + Fill */}
+             <th className="border-b border-slate-200 bg-slate-50/30 px-3">
+               <div className="flex items-center gap-3 text-[9px] text-slate-400 whitespace-nowrap">
+                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400" />High</span>
+                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" />Med</span>
+                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" />Low</span>
+               </div>
+             </th>
           </tr>
         </thead>
         <tbody className="text-sm text-slate-700 divide-y divide-slate-200">
