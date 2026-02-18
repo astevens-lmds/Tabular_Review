@@ -305,6 +305,15 @@ const App: React.FC = () => {
     setColumns(prev => prev.map(c => c.id === colId ? { ...c, width: newWidth } : c));
   };
 
+  const handleColumnReorder = (fromIndex: number, toIndex: number) => {
+    setColumns(prev => {
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+      return updated;
+    });
+  };
+
   const handleCloseMenu = () => {
     setAddColumnAnchor(null);
     setEditingColumnId(null);
@@ -797,6 +806,7 @@ const App: React.FC = () => {
                 onAddColumn={(rect) => setAddColumnAnchor(rect)}
                 onEditColumn={handleEditColumn}
                 onColumnResize={handleColumnResize}
+                onColumnReorder={handleColumnReorder}
                 onCellClick={handleCellClick}
                 onDocClick={handleDocumentClick}
                 onRemoveDoc={handleRemoveDoc}
