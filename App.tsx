@@ -6,7 +6,9 @@ import { AddColumnMenu } from './components/AddColumnMenu';
 import { extractColumnData } from './services/geminiService';
 import { processDocumentToMarkdown } from './services/documentProcessor';
 import { DocumentFile, Column, ExtractionResult, SidebarMode, ColumnType } from './types';
-import { MessageSquare, Table, Square, FilePlus, LayoutTemplate, ChevronDown, Zap, Cpu, Brain, Trash2, Play, Download, WrapText, Loader2 } from './components/Icons';
+import { MessageSquare, Table, Square, FilePlus, LayoutTemplate, ChevronDown, Zap, Cpu, Brain, Trash2, Play, Download, WrapText, Loader2, FolderOpen } from './components/Icons';
+import { ProjectManager } from './components/ProjectManager';
+import { Project, saveProject } from './services/projectStore';
 import { SAMPLE_COLUMNS } from './utils/sampleData';
 
 // Available Models
@@ -54,6 +56,10 @@ const App: React.FC = () => {
   
   // Text Wrap State
   const [isTextWrapEnabled, setIsTextWrapEnabled] = useState(false);
+
+  // Project Manager State
+  const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
 
   // Handlers
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -389,6 +395,33 @@ const App: React.FC = () => {
     }
   };
 
+  // Project Management
+  const handleSaveCurrentProject = (): Project => {
+    const id = currentProjectId || `proj_${Date.now()}`;
+    const project: Project = {
+      id,
+      name: projectName,
+      documents,
+      columns,
+      results,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setCurrentProjectId(id);
+    return project;
+  };
+
+  const handleLoadProject = (project: Project) => {
+    setDocuments(project.documents);
+    setColumns(project.columns);
+    setResults(project.results);
+    setProjectName(project.name);
+    setCurrentProjectId(project.id);
+    setSidebarMode('none');
+    setSelectedCell(null);
+    setPreviewDocId(null);
+  };
+
   // Render Helpers
   const getSidebarData = () => {
     // Priority 1: Selected Cell (Inspecting result)
@@ -467,6 +500,16 @@ const App: React.FC = () => {
             )}
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
+             {/* Projects Button */}
+             <button 
+                onClick={() => setIsProjectManagerOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 text-xs font-semibold rounded-md transition-all active:scale-95"
+                title="Manage Projects"
+             >
+                <FolderOpen className="w-3.5 h-3.5" />
+                Projects
+             </button>
+
              {/* Chat Button */}
              <button 
                 onClick={toggleChat}
@@ -705,6 +748,15 @@ const App: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Project Manager Modal */}
+      <ProjectManager
+        isOpen={isProjectManagerOpen}
+        onClose={() => setIsProjectManagerOpen(false)}
+        onLoadProject={handleLoadProject}
+        onSaveCurrentProject={handleSaveCurrentProject}
+        currentProjectId={currentProjectId}
+      />
     </div>
   );
 };
