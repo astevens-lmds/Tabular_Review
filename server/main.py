@@ -1,11 +1,52 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from docling.document_converter import DocumentConverter
 import tempfile
 import os
 import shutil
+import time
+from collections import defaultdict
 
-app = FastAPI()
+app = FastAPI(
+    title="Tabular Review API",
+    description="Backend API for Tabular Review — converts documents to Markdown using Docling.",
+    version="1.0.0",
+)
+
+# --- Rate Limiting ---
+# Simple in-memory rate limiter: max requests per IP within a sliding window
+RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", "30"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60"))
+
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Simple sliding-window rate limiter per client IP."""
+    # Only rate-limit the convert endpoint
+    if request.url.path == "/convert":
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        window_start = now - RATE_LIMIT_WINDOW_SECONDS
+
+        # Prune old entries
+        _rate_limit_store[client_ip] = [
+            t for t in _rate_limit_store[client_ip] if t > window_start
+        ]
+
+        if len(_rate_limit_store[client_ip]) >= RATE_LIMIT_MAX_REQUESTS:
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": f"Rate limit exceeded. Max {RATE_LIMIT_MAX_REQUESTS} requests per {RATE_LIMIT_WINDOW_SECONDS}s."
+                },
+            )
+
+        _rate_limit_store[client_ip].append(now)
+
+    return await call_next(request)
 
 # --- Configuration ---
 MAX_FILE_SIZE_MB = 50
