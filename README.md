@@ -144,7 +144,6 @@ docker-compose up --build
 │   ├── ChatInterface.tsx      # AI chat analyst
 │   ├── AddColumnMenu.tsx      # Column creation/editing
 │   ├── ErrorBoundary.tsx      # React error boundary
-│   ├── DocumentUpload.tsx     # File upload component
 │   └── Icons.tsx              # Icon re-exports from lucide-react
 ├── services/
 │   ├── geminiService.ts       # Gemini API integration
@@ -161,6 +160,21 @@ docker-compose up --build
 ├── Dockerfile.frontend        # Frontend Docker image
 └── Dockerfile.backend         # Backend Docker image
 ```
+
+## 📖 API Documentation
+
+The FastAPI backend includes auto-generated interactive API documentation:
+
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+- **OpenAPI JSON**: [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/convert` | Upload a document (PDF, DOCX, etc.) and receive Markdown text. Rate-limited to 30 req/min per IP. |
+| `GET` | `/health` | Health check endpoint. Returns `{"status": "ok"}`. |
 
 ## 🛡 License
 
