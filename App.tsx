@@ -6,13 +6,14 @@ import { AddColumnMenu } from './components/AddColumnMenu';
 import { extractColumnData } from './services/geminiService';
 import { processDocumentToMarkdown } from './services/documentProcessor';
 import { DocumentFile, Column, ExtractionResult, SidebarMode, ColumnType } from './types';
-import { MessageSquare, Table, Square, FilePlus, LayoutTemplate, ChevronDown, Zap, Cpu, Brain, Trash2, Play, Download, WrapText, Loader2, FolderOpen } from './components/Icons';
+import { MessageSquare, Table, Square, FilePlus, LayoutTemplate, ChevronDown, Zap, Cpu, Brain, Trash2, Play, Download, WrapText, Loader2, FolderOpen, Moon, Sun } from './components/Icons';
 import { ProjectManager } from './components/ProjectManager';
 import { Project, saveProject } from './services/projectStore';
 import { ColumnTemplateMenu } from './components/ColumnTemplateMenu';
 import { ColumnTemplate } from './utils/columnTemplates';
 import { batchExport } from './services/batchExport';
 import { SAMPLE_COLUMNS } from './utils/sampleData';
+import { useTheme } from './hooks/useTheme';
 
 // Available Models
 const MODELS = [
@@ -26,6 +27,9 @@ const MAX_DOCUMENTS = 200;
 const MAX_PROMPT_LENGTH = 5000;
 
 const App: React.FC = () => {
+  // Theme
+  const { theme, toggleTheme } = useTheme();
+  
   // State
   const [documents, setDocuments] = useState<DocumentFile[]>([]);
   const [projectName, setProjectName] = useState('Untitled Project');
@@ -454,7 +458,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
       {/* Hidden File Input */}
       <input 
         type="file" 
@@ -468,7 +472,7 @@ const App: React.FC = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="relative z-50 bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 shadow-sm">
+        <header className="relative z-50 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 h-16 flex items-center justify-between px-6 shadow-sm">
           <div className="flex items-center gap-4 min-w-0">
             <h1 className="text-lg font-bold text-slate-800 tracking-tight whitespace-nowrap">Tabular Review</h1>
             <div className="h-4 w-px bg-slate-300 mx-2 flex-shrink-0"></div>
@@ -503,6 +507,16 @@ const App: React.FC = () => {
              >
                 <FolderOpen className="w-3.5 h-3.5" />
                 Projects
+             </button>
+
+             {/* Dark Mode Toggle */}
+             <button 
+                onClick={toggleTheme}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 text-xs font-semibold rounded-md transition-all active:scale-95"
+                title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+             >
+                {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+                {theme === 'dark' ? 'Light' : 'Dark'}
              </button>
 
              {/* Chat Button */}
