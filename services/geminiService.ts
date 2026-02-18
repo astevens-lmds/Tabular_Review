@@ -17,16 +17,18 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 5, initialDel
   while (true) {
     try {
       return await operation();
-    } catch (error: any) {
+    } catch (error: unknown) {
       currentTry++;
       
       // Check for Rate Limit / Quota errors
+      const err = error as Record<string, unknown>;
+      const errMessage = err?.message as string | undefined;
       const isRateLimit = 
-        error?.status === 429 || 
-        error?.code === 429 ||
-        error?.message?.includes('429') || 
-        error?.message?.includes('RESOURCE_EXHAUSTED') ||
-        error?.message?.includes('quota');
+        err?.status === 429 || 
+        err?.code === 429 ||
+        errMessage?.includes('429') || 
+        errMessage?.includes('RESOURCE_EXHAUSTED') ||
+        errMessage?.includes('quota');
 
       if (isRateLimit && currentTry <= retries) {
         // Exponential backoff with jitter to prevent thundering herd
@@ -149,7 +151,7 @@ export const extractColumnData = async (
 
       return {
         value: String(json.value || ""),
-        confidence: (json.confidence as any) || "Low",
+        confidence: (json.confidence as ExtractionCell['confidence']) || "Low",
         quote: json.quote || "",
         page: json.page || 1,
         reasoning: json.reasoning || "",
@@ -194,7 +196,7 @@ export const generatePromptHelper = async (
 export const analyzeDataWithChat = async (
     message: string,
     context: { documents: DocumentFile[], columns: Column[], results: ExtractionResult },
-    history: any[],
+    history: Array<{ role: string; parts: Array<{ text: string }> }>,
     modelId: string
 ): Promise<string> => {
     let dataContext = "CURRENT EXTRACTION DATA:\n";
