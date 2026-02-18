@@ -15,7 +15,9 @@ export const SHORTCUT_DESCRIPTIONS = [
   { keys: 'Ctrl+E', description: 'Export CSV' },
   { keys: 'Ctrl+S', description: 'Save project' },
   { keys: 'Ctrl+/', description: 'Toggle chat' },
-  { keys: '←/→', description: 'Navigate documents' },
+  { keys: 'Ctrl+D', description: 'Toggle dark mode' },
+  { keys: 'Ctrl+P', description: 'Open projects' },
+  { keys: 'Ctrl+W', description: 'Toggle text wrap' },
   { keys: 'Escape', description: 'Close sidebar/modal' },
   { keys: '?', description: 'Show shortcuts help' },
 ];

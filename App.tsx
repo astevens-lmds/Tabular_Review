@@ -130,6 +130,30 @@ const App: React.FC = () => {
       description: 'Toggle chat',
       action: () => toggleChat(),
     },
+    {
+      key: 'd',
+      ctrl: true,
+      description: 'Toggle dark mode',
+      action: () => toggleTheme(),
+    },
+    {
+      key: 'p',
+      ctrl: true,
+      description: 'Open projects',
+      action: () => setIsProjectManagerOpen(true),
+    },
+    {
+      key: 'w',
+      ctrl: true,
+      description: 'Toggle text wrap',
+      action: () => setIsTextWrapEnabled(prev => !prev),
+    },
+    {
+      key: 'Enter',
+      ctrl: true,
+      description: 'Run analysis',
+      action: () => handleRunAnalysis(),
+    },
   ]);
 
   // Handlers
