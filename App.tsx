@@ -9,6 +9,8 @@ import { DocumentFile, Column, ExtractionResult, SidebarMode, ColumnType } from 
 import { MessageSquare, Table, Square, FilePlus, LayoutTemplate, ChevronDown, Zap, Cpu, Brain, Trash2, Play, Download, WrapText, Loader2, FolderOpen } from './components/Icons';
 import { ProjectManager } from './components/ProjectManager';
 import { Project, saveProject } from './services/projectStore';
+import { ColumnTemplateMenu } from './components/ColumnTemplateMenu';
+import { ColumnTemplate } from './utils/columnTemplates';
 import { batchExport } from './services/batchExport';
 import { SAMPLE_COLUMNS } from './utils/sampleData';
 
@@ -64,6 +66,9 @@ const App: React.FC = () => {
   // Project Manager State
   const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
+  // Column Template State
+  const [isTemplateMenuOpen, setIsTemplateMenuOpen] = useState(false);
 
   // Handlers
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -401,6 +406,17 @@ const App: React.FC = () => {
     setPreviewDocId(null);
   };
 
+  // Column Templates
+  const handleApplyTemplate = (template: ColumnTemplate) => {
+    const newCols = template.columns.map((col, i) => ({
+      ...col,
+      id: `col_tmpl_${Date.now()}_${i}`,
+      status: 'idle' as const,
+    }));
+    setColumns(prev => [...prev, ...newCols]);
+    setResults({}); // Reset results since columns changed
+  };
+
   // Render Helpers
   const getSidebarData = () => {
     // Priority 1: Selected Cell (Inspecting result)
@@ -521,6 +537,16 @@ const App: React.FC = () => {
              >
                 <LayoutTemplate className="w-3.5 h-3.5" />
                 Load Sample
+             </button>
+
+             {/* Column Templates Button */}
+             <button 
+                onClick={() => setIsTemplateMenuOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 text-xs font-semibold rounded-md transition-all active:scale-95"
+                title="Column Templates"
+             >
+                <LayoutTemplate className="w-3.5 h-3.5" />
+                Templates
              </button>
 
              {/* Export Button with Dropdown */}
@@ -749,6 +775,13 @@ const App: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Column Template Menu */}
+      <ColumnTemplateMenu
+        isOpen={isTemplateMenuOpen}
+        onClose={() => setIsTemplateMenuOpen(false)}
+        onApplyTemplate={handleApplyTemplate}
+      />
 
       {/* Project Manager Modal */}
       <ProjectManager
