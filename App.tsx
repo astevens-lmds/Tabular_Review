@@ -22,7 +22,6 @@ import { PromptTemplateManager } from './components/PromptTemplateManager';
 import { ShareMenu } from './components/ShareMenu';
 import { logExtraction } from './services/extractionHistory';
 import { parseShareURL } from './services/sharingService';
-import { ColumnType } from './types';
 
 // Available Models
 const MODELS = [
@@ -433,41 +432,64 @@ const App: React.FC = () => {
       // Track progress
       setExtractionProgress({ completed: 0, total: tasks.length });
 
-      // 2. Process EVERYTHING concurrently (Simultaneous)
-      const promises = tasks.map(async ({ doc, col }) => {
-          if (controller.signal.aborted) return;
-          try {
-              const data = await extractColumnData(doc, col, selectedModel);
-              if (controller.signal.aborted) return;
+      // 2. Process with concurrency limit (max 5 simultaneous requests)
+      // Uses a simple semaphore pattern to avoid overwhelming the API
+      const MAX_CONCURRENT = 5;
+      let active = 0;
+      let taskIndex = 0;
 
-              setResults(prev => ({
-                  ...prev,
-                  [doc.id]: {
+      await new Promise<void>((resolve) => {
+        let completed = 0;
+        const total = tasks.length;
+
+        if (total === 0) { resolve(); return; }
+
+        const runNext = () => {
+          while (active < MAX_CONCURRENT && taskIndex < total) {
+            if (controller.signal.aborted) { if (completed + active === 0 || completed === total) resolve(); return; }
+            const { doc, col } = tasks[taskIndex++];
+            active++;
+
+            (async () => {
+              try {
+                const data = await extractColumnData(doc, col, selectedModel);
+                if (!controller.signal.aborted) {
+                  setResults(prev => ({
+                    ...prev,
+                    [doc.id]: {
                       ...(prev[doc.id] || {}),
                       [col.id]: data
-                  }
-              }));
-              setExtractionProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
+                    }
+                  }));
+                  setExtractionProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
 
-              // Log to extraction history
-              logExtraction({
-                projectName,
-                documentName: doc.name,
-                documentId: doc.id,
-                columnName: col.name,
-                columnId: col.id,
-                model: selectedModel,
-                extractedValue: data?.value || '',
-                confidence: data?.confidence || 'Low',
-                user: 'Current User',
-              }).catch(() => {});
-          } catch (e) {
-              console.error(`Failed to extract ${col.name} for ${doc.name}`, e);
-              setExtractionProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
+                  // Log to extraction history
+                  logExtraction({
+                    projectName,
+                    documentName: doc.name,
+                    documentId: doc.id,
+                    columnName: col.name,
+                    columnId: col.id,
+                    model: selectedModel,
+                    extractedValue: data?.value || '',
+                    confidence: data?.confidence || 'Low',
+                    user: 'Current User',
+                  }).catch(() => {});
+                }
+              } catch (e) {
+                console.error(`Failed to extract ${col.name} for ${doc.name}`, e);
+                setExtractionProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
+              } finally {
+                active--;
+                completed++;
+                if (completed === total) { resolve(); return; }
+                runNext();
+              }
+            })();
           }
+        };
+        runNext();
       });
-
-      await Promise.all(promises);
 
       // Mark all columns as completed if finished successfully without abort
       if (!controller.signal.aborted) {
