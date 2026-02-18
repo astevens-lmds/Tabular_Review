@@ -17,6 +17,12 @@ import { useTheme } from './hooks/useTheme';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
 import { BatchUploadProgress, UploadFileStatus } from './components/BatchUploadProgress';
+import { ExtractionHistory } from './components/ExtractionHistory';
+import { PromptTemplateManager } from './components/PromptTemplateManager';
+import { ShareMenu } from './components/ShareMenu';
+import { logExtraction } from './services/extractionHistory';
+import { parseShareURL } from './services/sharingService';
+import { ColumnType } from './types';
 
 // Available Models
 const MODELS = [
@@ -82,6 +88,11 @@ const App: React.FC = () => {
 
   // Batch Upload Progress State
   const [uploadProgress, setUploadProgress] = useState<UploadFileStatus[]>([]);
+
+  // Wave 14: New feature states
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isPromptTemplatesOpen, setIsPromptTemplatesOpen] = useState(false);
+  const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
 
   // Keyboard Shortcuts
   useKeyboardShortcuts([
@@ -159,6 +170,19 @@ const App: React.FC = () => {
       action: () => handleRunAnalysis(),
     },
   ]);
+
+  // Load shared project from URL on mount
+  React.useEffect(() => {
+    const shared = parseShareURL();
+    if (shared) {
+      setProjectName(shared.name);
+      setColumns(shared.columns);
+      // Clean URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('shared');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
 
   // Handlers
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -424,6 +448,19 @@ const App: React.FC = () => {
                   }
               }));
               setExtractionProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
+
+              // Log to extraction history
+              logExtraction({
+                projectName,
+                documentName: doc.name,
+                documentId: doc.id,
+                columnName: col.name,
+                columnId: col.id,
+                model: selectedModel,
+                extractedValue: data?.value || '',
+                confidence: data?.confidence || 'Low',
+                user: 'Current User',
+              }).catch(() => {});
           } catch (e) {
               console.error(`Failed to extract ${col.name} for ${doc.name}`, e);
               setExtractionProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
@@ -518,6 +555,24 @@ const App: React.FC = () => {
     setSidebarMode('none');
     setSelectedCell(null);
     setPreviewDocId(null);
+  };
+
+  // Prompt Template: use a saved prompt to create a new column
+  const handleUsePromptTemplate = (prompt: string, columnType: ColumnType) => {
+    // Open the add-column menu with pre-filled data
+    const rect = new DOMRect(window.innerWidth / 2 - 150, 80, 300, 40);
+    setAddColumnAnchor(rect);
+    setEditingColumnId(null);
+    // Create the column directly with the template prompt
+    const newCol: Column = {
+      id: `col_${Date.now()}`,
+      name: 'New Column (from template)',
+      type: columnType,
+      prompt,
+      status: 'idle',
+      width: 250,
+    };
+    setColumns(prev => [...prev, newCol]);
   };
 
   // Column Templates
@@ -671,6 +726,33 @@ const App: React.FC = () => {
              >
                 <LayoutTemplate className="w-3.5 h-3.5" />
                 Templates
+             </button>
+
+             {/* Prompt Templates Button */}
+             <button
+                onClick={() => setIsPromptTemplatesOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 text-xs font-semibold rounded-md transition-all active:scale-95"
+                title="Prompt Templates"
+             >
+                Prompts
+             </button>
+
+             {/* Extraction History Button */}
+             <button
+                onClick={() => setIsHistoryOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 text-xs font-semibold rounded-md transition-all active:scale-95"
+                title="Extraction History"
+             >
+                History
+             </button>
+
+             {/* Share Button */}
+             <button
+                onClick={() => setIsShareMenuOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 text-xs font-semibold rounded-md transition-all active:scale-95"
+                title="Share Project"
+             >
+                Share
              </button>
 
              {/* Export Button with Dropdown */}
@@ -924,6 +1006,27 @@ const App: React.FC = () => {
       <BatchUploadProgress
         files={uploadProgress}
         onClose={() => setUploadProgress([])}
+      />
+
+      {/* Extraction History Modal */}
+      <ExtractionHistory
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+      />
+
+      {/* Prompt Template Manager Modal */}
+      <PromptTemplateManager
+        isOpen={isPromptTemplatesOpen}
+        onClose={() => setIsPromptTemplatesOpen(false)}
+        onUseTemplate={handleUsePromptTemplate}
+      />
+
+      {/* Share Menu Modal */}
+      <ShareMenu
+        isOpen={isShareMenuOpen}
+        onClose={() => setIsShareMenuOpen(false)}
+        currentProject={handleSaveCurrentProject}
+        onImportProject={handleLoadProject}
       />
 
       {/* Project Manager Modal */}
