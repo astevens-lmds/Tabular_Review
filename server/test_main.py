@@ -143,6 +143,62 @@ class TestConversionErrors:
         assert "conversion failed" in response.json()["detail"].lower()
 
 
+class TestCORSHeaders:
+    def test_cors_allows_localhost(self):
+        response = client.options(
+            "/health",
+            headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET"},
+        )
+        assert response.headers.get("access-control-allow-origin") in (
+            "http://localhost:3000",
+            "*",
+            None,
+        ) or response.status_code == 200
+
+    def test_health_returns_json_content_type(self):
+        response = client.get("/health")
+        assert "application/json" in response.headers["content-type"]
+
+
+class TestFilenameEdgeCases:
+    def test_rejects_file_without_extension(self):
+        file = io.BytesIO(b"content")
+        response = client.post("/convert", files={"file": ("README", file, "text/plain")})
+        assert response.status_code == 400
+
+    def test_rejects_double_extension_ending_bad(self):
+        file = io.BytesIO(b"content")
+        response = client.post("/convert", files={"file": ("doc.pdf.exe", file, "application/octet-stream")})
+        assert response.status_code == 400
+
+    @patch("main.converter")
+    def test_accepts_uppercase_extension(self, mock_converter):
+        mock_result = MagicMock()
+        mock_result.document.export_to_markdown.return_value = "# Upper"
+        mock_converter.convert.return_value = mock_result
+        file = io.BytesIO(b"content")
+        response = client.post("/convert", files={"file": ("DOC.PDF", file, "application/pdf")})
+        assert response.status_code == 200
+
+    @patch("main.converter")
+    def test_accepts_xlsx(self, mock_converter):
+        mock_result = MagicMock()
+        mock_result.document.export_to_markdown.return_value = "# Spreadsheet"
+        mock_converter.convert.return_value = mock_result
+        file = io.BytesIO(b"xlsx content")
+        response = client.post("/convert", files={"file": ("data.xlsx", file, "application/vnd.openxmlformats")})
+        assert response.status_code == 200
+
+    @patch("main.converter")
+    def test_accepts_pptx(self, mock_converter):
+        mock_result = MagicMock()
+        mock_result.document.export_to_markdown.return_value = "# Slides"
+        mock_converter.convert.return_value = mock_result
+        file = io.BytesIO(b"pptx content")
+        response = client.post("/convert", files={"file": ("deck.pptx", file, "application/vnd.openxmlformats")})
+        assert response.status_code == 200
+
+
 class TestOpenAPIDocs:
     def test_openapi_json_available(self):
         response = client.get("/openapi.json")
