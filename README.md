@@ -132,6 +132,25 @@ docker-compose up --build
 - Backend API: http://localhost:8000
 - API docs: http://localhost:8000/docs
 
+## 🧪 Testing
+
+### Frontend (Vitest)
+```bash
+npx vitest run          # Run all tests once
+npx vitest              # Watch mode
+```
+
+Tests live in `tests/` and cover components (App, DataGrid, AddColumnMenu, KeyboardShortcutsHelp, ErrorBoundary, BatchUploadProgress), utilities (CSV/PDF export, column templates, theming), and type definitions.
+
+### Backend (pytest)
+```bash
+cd server
+source venv/bin/activate
+pytest test_main.py -v
+```
+
+Backend tests cover the `/convert` and `/health` endpoints, rate limiting, file size limits, CORS headers, and filename validation.
+
 ## 📁 Project Structure
 
 ```
@@ -143,13 +162,24 @@ docker-compose up --build
 │   ├── VerificationSidebar.tsx # Cell inspection & document viewer
 │   ├── ChatInterface.tsx      # AI chat analyst
 │   ├── AddColumnMenu.tsx      # Column creation/editing
+│   ├── BatchUploadProgress.tsx # Batch upload progress overlay
+│   ├── ColumnTemplateMenu.tsx # Pre-built column templates
 │   ├── ErrorBoundary.tsx      # React error boundary
+│   ├── KeyboardShortcutsHelp.tsx # Shortcuts modal
+│   ├── ProjectManager.tsx     # Project save/load
 │   └── Icons.tsx              # Icon re-exports from lucide-react
+├── hooks/
+│   ├── useTheme.ts            # Dark mode hook
+│   └── useKeyboardShortcuts.ts # Keyboard shortcut handler
 ├── services/
 │   ├── geminiService.ts       # Gemini API integration
-│   └── documentProcessor.ts   # Frontend → backend file conversion
+│   ├── documentProcessor.ts   # Frontend → backend file conversion
+│   ├── batchExport.ts         # Multi-format export
+│   └── projectStore.ts        # LocalStorage project persistence
+├── tests/                     # Vitest test suite
 ├── utils/
-│   └── sampleData.ts          # Built-in sample documents
+│   ├── sampleData.ts          # Built-in sample documents
+│   └── columnTemplates.ts     # Column template definitions
 ├── server/
 │   ├── main.py                # FastAPI backend
 │   └── requirements.txt       # Python dependencies
