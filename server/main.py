@@ -1,12 +1,19 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from docling.document_converter import DocumentConverter
 import tempfile
 import os
 import shutil
 import time
 from collections import defaultdict
+import asyncio
+import httpx
+from dotenv import load_dotenv
+from typing import Optional
+
+load_dotenv()
 
 app = FastAPI(
     title="Tabular Review API",
@@ -53,23 +60,43 @@ MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".json", ".pptx", ".xlsx"}
 
-# Configure CORS
-# In production, replace with specific origins
-origins = [
-    "http://localhost:3000",
-    "http://localhost:5173",  # Vite default
-]
+# Configure CORS — use specific frontend origin from env, fallback to dev defaults
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+allowed_origins = [origin.strip() for origin in FRONTEND_ORIGIN.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["POST"],
+    allow_headers=["Content-Type"],
 )
 
 # Initialize converter (this might take a moment to load models on startup)
 converter = DocumentConverter()
+
+# Gemini API key — server-side only
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+if not GEMINI_API_KEY:
+    print("WARNING: GEMINI_API_KEY is not set in environment variables")
+
+# Concurrency limiter — max 5 concurrent Gemini requests
+_gemini_semaphore = asyncio.Semaphore(5)
+
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+
+
+class GeminiRequest(BaseModel):
+    model: str
+    contents: dict | list
+    config: Optional[dict] = None
+
+
+class ChatRequest(BaseModel):
+    model: str
+    message: str
+    systemInstruction: Optional[str] = None
+    history: Optional[list] = None
 
 
 @app.post("/convert")
@@ -119,6 +146,79 @@ async def convert_document(file: UploadFile = File(...)):
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+
+@app.post("/api/gemini")
+async def gemini_proxy(request: GeminiRequest):
+    """Proxy Gemini generateContent calls through the backend, keeping the API key server-side."""
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured on server")
+
+    url = f"{GEMINI_API_BASE}/{request.model}:generateContent?key={GEMINI_API_KEY}"
+
+    # Build the request body matching Google's API format
+    body: dict = {}
+    if isinstance(request.contents, dict):
+        body["contents"] = [request.contents]
+    else:
+        body["contents"] = request.contents
+
+    if request.config:
+        generation_config = {}
+        if "responseMimeType" in request.config:
+            generation_config["responseMimeType"] = request.config["responseMimeType"]
+        if "responseSchema" in request.config:
+            generation_config["responseSchema"] = request.config["responseSchema"]
+        if generation_config:
+            body["generationConfig"] = generation_config
+        if "systemInstruction" in request.config:
+            body["systemInstruction"] = {"parts": [{"text": request.config["systemInstruction"]}]}
+
+    async with _gemini_semaphore:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(url, json=body)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return resp.json()
+
+
+@app.post("/api/gemini/chat")
+async def gemini_chat_proxy(request: ChatRequest):
+    """Proxy Gemini chat calls through the backend."""
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured on server")
+
+    url = f"{GEMINI_API_BASE}/{request.model}:generateContent?key={GEMINI_API_KEY}"
+
+    body: dict = {"contents": []}
+    
+    # Add history
+    if request.history:
+        for msg in request.history:
+            body["contents"].append(msg)
+
+    # Add current user message
+    body["contents"].append({
+        "role": "user",
+        "parts": [{"text": request.message}]
+    })
+
+    if request.systemInstruction:
+        body["systemInstruction"] = {"parts": [{"text": request.systemInstruction}]}
+
+    async with _gemini_semaphore:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(url, json=body)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            data = resp.json()
+            # Extract text from response
+            try:
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+            except (KeyError, IndexError):
+                text = "No response generated."
+            return {"text": text}
 
 
 if __name__ == "__main__":

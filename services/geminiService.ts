@@ -1,12 +1,6 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { DocumentFile, ExtractionCell, Column, ExtractionResult } from "../types";
+import { DocumentFile, ExtractionCell, Column } from "../types";
 
-// Initialize Gemini Client
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-if (!apiKey) {
-  console.error("VITE_GEMINI_API_KEY is not set in environment variables");
-}
-const ai = new GoogleGenAI({ apiKey: apiKey || "" });
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // Helper for delay
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -31,42 +25,40 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 5, initialDel
         errMessage?.includes('quota');
 
       if (isRateLimit && currentTry <= retries) {
-        // Exponential backoff with jitter to prevent thundering herd
         const delay = initialDelay * Math.pow(2, currentTry - 1) + (Math.random() * 1000);
-        console.warn(`Gemini API Rate Limit hit. Retrying attempt ${currentTry} in ${delay.toFixed(0)}ms...`);
+        console.warn(`Rate limit hit. Retrying attempt ${currentTry} in ${delay.toFixed(0)}ms...`);
         await wait(delay);
         continue;
       }
       
-      // If not a rate limit or retries exhausted, throw
       throw error;
     }
   }
 }
 
-// Schema for Extraction
-const extractionSchema: Schema = {
-  type: Type.OBJECT,
+// Schema for Extraction (sent to backend which forwards to Gemini)
+const extractionSchema = {
+  type: "OBJECT",
   properties: {
     value: {
-      type: Type.STRING,
+      type: "STRING",
       description: "The extracted answer. Keep it concise.",
     },
     confidence: {
-      type: Type.STRING,
+      type: "STRING",
       enum: ["High", "Medium", "Low"],
       description: "Confidence level of the extraction.",
     },
     quote: {
-      type: Type.STRING,
+      type: "STRING",
       description: "Verbatim text from the document supporting the answer. Must be exact substring.",
     },
     page: {
-      type: Type.INTEGER,
+      type: "INTEGER",
       description: "The page number where the information was found (approximate if not explicit).",
     },
     reasoning: {
-      type: Type.STRING,
+      type: "STRING",
       description: "A short explanation of why this value was selected.",
     },
   },
@@ -79,43 +71,32 @@ export const extractColumnData = async (
   modelId: string
 ): Promise<ExtractionCell> => {
   return withRetry(async () => {
+    let docText = "";
     try {
-      const parts = [];
-      
-      // We assume doc.content is now ALWAYS text/markdown because we converted it locally on upload.
-      // Decode Base64 to get the text
-      let docText = "";
-      try {
-          docText = decodeURIComponent(escape(atob(doc.content)));
-      } catch (e) {
-          // Fallback
-          docText = atob(doc.content);
-      }
+      docText = decodeURIComponent(escape(atob(doc.content)));
+    } catch {
+      docText = atob(doc.content);
+    }
 
-      parts.push({
-        text: `DOCUMENT CONTENT:\n${docText}`,
-      });
-  
-      // Format instruction based on column type
-      let formatInstruction = "";
-      switch (column.type) {
-        case 'date':
-            formatInstruction = "Format the date as YYYY-MM-DD.";
-            break;
-        case 'boolean':
-            formatInstruction = "Return 'true' or 'false' as the value string.";
-            break;
-        case 'number':
-            formatInstruction = "Return a clean number string, removing currency symbols if needed.";
-            break;
-        case 'list':
-            formatInstruction = "Return the items as a comma-separated string.";
-            break;
-        default:
-            formatInstruction = "Keep the text concise.";
-      }
+    let formatInstruction = "";
+    switch (column.type) {
+      case 'date':
+        formatInstruction = "Format the date as YYYY-MM-DD.";
+        break;
+      case 'boolean':
+        formatInstruction = "Return 'true' or 'false' as the value string.";
+        break;
+      case 'number':
+        formatInstruction = "Return a clean number string, removing currency symbols if needed.";
+        break;
+      case 'list':
+        formatInstruction = "Return the items as a comma-separated string.";
+        break;
+      default:
+        formatInstruction = "Keep the text concise.";
+    }
 
-      const prompt = `Task: Extract specific information from the provided document.
+    const prompt = `Task: Extract specific information from the provided document.
       
       Column Name: "${column.name}"
       Extraction Instruction: ${column.prompt}
@@ -127,51 +108,62 @@ export const extractColumnData = async (
       - Provide a brief reasoning.
       `;
 
-      parts.push({ text: prompt });
-
-      const response = await ai.models.generateContent({
+    const response = await fetch(`${API_URL}/api/gemini`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         model: modelId,
         contents: {
-            role: 'user',
-            parts: parts
+          role: "user",
+          parts: [
+            { text: `DOCUMENT CONTENT:\n${docText}` },
+            { text: prompt },
+          ],
         },
         config: {
-            responseMimeType: 'application/json',
-            responseSchema: extractionSchema,
-            systemInstruction: "You are a precise data extraction agent. You must extract data exactly as requested."
-        }
-      });
+          responseMimeType: "application/json",
+          responseSchema: extractionSchema,
+          systemInstruction: "You are a precise data extraction agent. You must extract data exactly as requested.",
+        },
+      }),
+    });
 
-      const responseText = response.text;
-      if (!responseText) {
-          throw new Error("Empty response from model");
-      }
-
-      const json = JSON.parse(responseText);
-
-      return {
-        value: String(json.value || ""),
-        confidence: (json.confidence as ExtractionCell['confidence']) || "Low",
-        quote: json.quote || "",
-        page: json.page || 1,
-        reasoning: json.reasoning || "",
-        status: 'needs_review'
-      };
-
-    } catch (error) {
-      console.error("Extraction error:", error);
+    if (!response.ok) {
+      const errorText = await response.text();
+      const error: any = new Error(`Gemini API error: ${response.status}`);
+      error.status = response.status;
+      error.message = errorText;
       throw error;
     }
+
+    const data = await response.json();
+    
+    // Extract text from Google's response format
+    const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!responseText) {
+      throw new Error("Empty response from model");
+    }
+
+    const json = JSON.parse(responseText);
+
+    return {
+      value: String(json.value || ""),
+      confidence: (json.confidence as any) || "Low",
+      quote: json.quote || "",
+      page: json.page || 1,
+      reasoning: json.reasoning || "",
+      status: "needs_review",
+    };
   });
 };
 
 export const generatePromptHelper = async (
-    name: string,
-    type: string,
-    currentPrompt: string | undefined,
-    modelId: string
+  name: string,
+  type: string,
+  currentPrompt: string | undefined,
+  modelId: string
 ): Promise<string> => {
-    const prompt = `I need to configure a Large Language Model to extract a specific data field from business documents.
+  const prompt = `I need to configure a Large Language Model to extract a specific data field from business documents.
     
     Field Name: "${name}"
     Field Type: "${type}"
@@ -181,46 +173,56 @@ export const generatePromptHelper = async (
     The prompt should describe what to look for and how to handle edge cases if applicable.
     Return ONLY the prompt text, no conversational filler.`;
 
-    try {
-        const response = await ai.models.generateContent({
-            model: modelId,
-            contents: prompt
-        });
-        return response.text?.trim() || "";
-    } catch (error) {
-        console.error("Prompt generation error:", error);
-        return currentPrompt || `Extract the ${name} from the document.`;
-    }
+  try {
+    const response = await fetch(`${API_URL}/api/gemini`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelId,
+        contents: {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      }),
+    });
+
+    if (!response.ok) throw new Error("Prompt generation failed");
+
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return text?.trim() || currentPrompt || `Extract the ${name} from the document.`;
+  } catch (error) {
+    console.error("Prompt generation error:", error);
+    return currentPrompt || `Extract the ${name} from the document.`;
+  }
 };
 
 export const analyzeDataWithChat = async (
-    message: string,
-    context: { documents: DocumentFile[], columns: Column[], results: ExtractionResult },
-    history: Array<{ role: string; parts: Array<{ text: string }> }>,
-    modelId: string
+  message: string,
+  context: { documents: DocumentFile[]; columns: Column[]; results: Record<string, Record<string, ExtractionCell>> },
+  history: Array<{ role: string; parts: Array<{ text: string }> }>,
+  modelId: string
 ): Promise<string> => {
-    let dataContext = "CURRENT EXTRACTION DATA:\n";
-    dataContext += `Documents: ${context.documents.map(d => d.name).join(", ")}\n`;
-    dataContext += `Columns: ${context.columns.map(c => c.name).join(", ")}\n\n`;
-    dataContext += "DATA TABLE (CSV Format):\n";
-    
-    const headers = ["Document Name", ...context.columns.map(c => c.name)].join(",");
-    dataContext += headers + "\n";
-    
-    context.documents.forEach(doc => {
-        const row = [doc.name];
-        context.columns.forEach(col => {
-            const cell = context.results[doc.id]?.[col.id];
-            const val = cell ? cell.value.replace(/,/g, ' ') : "N/A";
-            row.push(val);
-        });
-        dataContext += row.join(",") + "\n";
-    });
+  let dataContext = "CURRENT EXTRACTION DATA:\n";
+  dataContext += `Documents: ${context.documents.map((d) => d.name).join(", ")}\n`;
+  dataContext += `Columns: ${context.columns.map((c) => c.name).join(", ")}\n\n`;
+  dataContext += "DATA TABLE (CSV Format):\n";
 
-    const systemInstruction = `You are an intelligent data analyst assistant. 
+  const headers = ["Document Name", ...context.columns.map((c) => c.name)].join(",");
+  dataContext += headers + "\n";
+
+  context.documents.forEach((doc) => {
+    const row = [doc.name];
+    context.columns.forEach((col) => {
+      const cell = context.results[doc.id]?.[col.id];
+      const val = cell ? cell.value.replace(/,/g, " ") : "N/A";
+      row.push(val);
+    });
+    dataContext += row.join(",") + "\n";
+  });
+
+  const systemInstruction = `You are an intelligent data analyst assistant. 
     You have access to a dataset extracted from documents (provided in context).
-    
-    User Query: ${message}
     
     ${dataContext}
     
@@ -230,19 +232,24 @@ export const analyzeDataWithChat = async (
     3. If the data is missing or N/A, state that clearly.
     4. Keep answers professional and concise.`;
 
-    try {
-        const chat = ai.chats.create({
-            model: modelId,
-            config: {
-                systemInstruction: systemInstruction
-            },
-            history: history
-        });
+  try {
+    const response = await fetch(`${API_URL}/api/gemini/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelId,
+        message: message,
+        systemInstruction: systemInstruction,
+        history: history,
+      }),
+    });
 
-        const response = await chat.sendMessage({ message: message });
-        return response.text || "No response generated.";
-    } catch (error) {
-        console.error("Chat analysis error:", error);
-        return "I apologize, but I encountered an error while analyzing the data. Please try again.";
-    }
+    if (!response.ok) throw new Error("Chat request failed");
+
+    const data = await response.json();
+    return data.text || "No response generated.";
+  } catch (error) {
+    console.error("Chat analysis error:", error);
+    return "I apologize, but I encountered an error while analyzing the data. Please try again.";
+  }
 };
