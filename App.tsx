@@ -9,6 +9,7 @@ import { DocumentFile, Column, ExtractionResult, SidebarMode, ColumnType } from 
 import { MessageSquare, Table, Square, FilePlus, LayoutTemplate, ChevronDown, Zap, Cpu, Brain, Trash2, Play, Download, WrapText, Loader2, FolderOpen } from './components/Icons';
 import { ProjectManager } from './components/ProjectManager';
 import { Project, saveProject } from './services/projectStore';
+import { batchExport } from './services/batchExport';
 import { SAMPLE_COLUMNS } from './utils/sampleData';
 
 // Available Models
@@ -56,6 +57,9 @@ const App: React.FC = () => {
   
   // Text Wrap State
   const [isTextWrapEnabled, setIsTextWrapEnabled] = useState(false);
+
+  // Export Menu State
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
   // Project Manager State
   const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
@@ -251,34 +255,9 @@ const App: React.FC = () => {
     processExtraction(documents, columns);
   };
 
-  const handleExportCSV = () => {
+  const handleExport = (format: 'csv' | 'xlsx') => {
     if (documents.length === 0) return;
-
-    // Headers
-    const headerRow = ['Document Name', ...columns.map(c => c.name)];
-    
-    // Rows
-    const rows = documents.map(doc => {
-      const rowData = [doc.name];
-      columns.forEach(col => {
-        const cell = results[doc.id]?.[col.id];
-        // Escape double quotes with two double quotes
-        const val = cell ? cell.value.replace(/"/g, '""') : "";
-        rowData.push(`"${val}"`);
-      });
-      return rowData.join(",");
-    });
-
-    const csvContent = [headerRow.join(","), ...rows].join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${projectName.replace(/\s+/g, '_').toLowerCase()}_export.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    batchExport({ documents, columns, results, projectName, format });
   };
 
   const processExtraction = async (docsToProcess: DocumentFile[], colsToProcess: Column[]) => {
@@ -544,15 +523,37 @@ const App: React.FC = () => {
                 Load Sample
              </button>
 
-             {/* Export Button */}
-             <button 
-                onClick={handleExportCSV}
-                className="flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 text-xs font-semibold rounded-md transition-all active:scale-95"
-                title="Export to CSV"
-             >
-                <Download className="w-3.5 h-3.5" />
-                Export
-             </button>
+             {/* Export Button with Dropdown */}
+             <div className="relative">
+               <button 
+                  onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 text-xs font-semibold rounded-md transition-all active:scale-95"
+                  title="Export data"
+               >
+                  <Download className="w-3.5 h-3.5" />
+                  Export
+                  <ChevronDown className="w-3 h-3 opacity-60" />
+               </button>
+               {isExportMenuOpen && (
+                 <>
+                   <div className="fixed inset-0 z-40" onClick={() => setIsExportMenuOpen(false)} />
+                   <div className="absolute right-0 top-full mt-2 w-44 bg-white rounded-xl shadow-xl border border-slate-100 p-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+                     <button
+                       onClick={() => { handleExport('csv'); setIsExportMenuOpen(false); }}
+                       className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-xs font-medium text-slate-700"
+                     >
+                       Export as CSV
+                     </button>
+                     <button
+                       onClick={() => { handleExport('xlsx'); setIsExportMenuOpen(false); }}
+                       className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-xs font-medium text-slate-700"
+                     >
+                       Export as Excel
+                     </button>
+                   </div>
+                 </>
+               )}
+             </div>
              
              {/* Text Wrap Button */}
              <button 
