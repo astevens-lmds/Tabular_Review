@@ -25,7 +25,12 @@ function buildRows(documents: DocumentFile[], columns: Column[], results: Extrac
 
 function escapeCsvCell(val: string): string {
   if (val.includes(',') || val.includes('"') || val.includes('\n')) {
-    return `"${val.replace(/"/g, '""')}"`;
+    let escaped = val.replace(/"/g, '""');
+    // CSV injection protection: prefix dangerous characters with single quote
+    if (escaped.length > 0 && /^[=+\-@]/.test(escaped)) {
+      escaped = "'" + escaped;
+    }
+    return `"${escaped}"`;
   }
   return val;
 }
