@@ -4,4 +4,4 @@ python-multipart
 docling
 pytest
 httpx
-
+python-dotenv
