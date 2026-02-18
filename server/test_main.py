@@ -80,6 +80,69 @@ class TestRateLimiting:
         assert "Rate limit" in response.json()["detail"]
 
 
+class TestFileSizeLimit:
+    def test_rejects_oversized_file(self):
+        # Create a file just over 50MB
+        large_content = b"x" * (50 * 1024 * 1024 + 1)
+        file = io.BytesIO(large_content)
+        response = client.post("/convert", files={"file": ("big.pdf", file, "application/pdf")})
+        assert response.status_code == 413
+        assert "too large" in response.json()["detail"].lower()
+
+    def test_accepts_file_under_limit(self):
+        with patch("main.converter") as mock_converter:
+            mock_result = MagicMock()
+            mock_result.document.export_to_markdown.return_value = "# OK"
+            mock_converter.convert.return_value = mock_result
+
+            file = io.BytesIO(b"small content here")
+            response = client.post("/convert", files={"file": ("small.pdf", file, "application/pdf")})
+            assert response.status_code == 200
+
+
+class TestMultipleFileTypes:
+    @patch("main.converter")
+    def test_accepts_docx(self, mock_converter):
+        mock_result = MagicMock()
+        mock_result.document.export_to_markdown.return_value = "# DOCX"
+        mock_converter.convert.return_value = mock_result
+
+        file = io.BytesIO(b"docx content")
+        response = client.post("/convert", files={"file": ("doc.docx", file, "application/vnd.openxmlformats")})
+        assert response.status_code == 200
+
+    @patch("main.converter")
+    def test_accepts_txt(self, mock_converter):
+        mock_result = MagicMock()
+        mock_result.document.export_to_markdown.return_value = "plain text"
+        mock_converter.convert.return_value = mock_result
+
+        file = io.BytesIO(b"hello world")
+        response = client.post("/convert", files={"file": ("notes.txt", file, "text/plain")})
+        assert response.status_code == 200
+
+    def test_rejects_exe(self):
+        file = io.BytesIO(b"MZ binary")
+        response = client.post("/convert", files={"file": ("malware.exe", file, "application/octet-stream")})
+        assert response.status_code == 400
+
+    def test_rejects_jpg(self):
+        file = io.BytesIO(b"\xff\xd8\xff image data")
+        response = client.post("/convert", files={"file": ("photo.jpg", file, "image/jpeg")})
+        assert response.status_code == 400
+
+
+class TestConversionErrors:
+    @patch("main.converter")
+    def test_handles_converter_exception(self, mock_converter):
+        mock_converter.convert.side_effect = RuntimeError("Docling crashed")
+
+        file = io.BytesIO(b"bad pdf content")
+        response = client.post("/convert", files={"file": ("broken.pdf", file, "application/pdf")})
+        assert response.status_code == 500
+        assert "conversion failed" in response.json()["detail"].lower()
+
+
 class TestOpenAPIDocs:
     def test_openapi_json_available(self):
         response = client.get("/openapi.json")
