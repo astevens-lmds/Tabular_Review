@@ -9,6 +9,7 @@ interface DataGridProps {
   onAddColumn: (triggerRect: DOMRect) => void;
   onEditColumn: (colId: string, triggerRect: DOMRect) => void;
   onColumnResize?: (colId: string, newWidth: number) => void;
+  onColumnReorder?: (fromIndex: number, toIndex: number) => void;
   isTextWrapEnabled?: boolean;
   onCellClick: (docId: string, colId: string) => void;
   onDocClick: (docId: string) => void;
@@ -25,6 +26,7 @@ export const DataGrid: React.FC<DataGridProps> = ({
   onAddColumn,
   onEditColumn,
   onColumnResize,
+  onColumnReorder,
   isTextWrapEnabled,
   onCellClick,
   onDocClick,
@@ -36,6 +38,10 @@ export const DataGrid: React.FC<DataGridProps> = ({
   const [resizingColId, setResizingColId] = useState<string | null>(null);
   const [startX, setStartX] = useState(0);
   const [startWidth, setStartWidth] = useState(0);
+  
+  // Column drag-and-drop reordering state
+  const [dragColIndex, setDragColIndex] = useState<number | null>(null);
+  const [dragOverColIndex, setDragOverColIndex] = useState<number | null>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -142,11 +148,39 @@ export const DataGrid: React.FC<DataGridProps> = ({
               Document
             </th>
 
-            {columns.map((col) => (
+            {columns.map((col, colIdx) => (
               <th 
                 key={col.id} 
-                className="p-3 border-b border-r border-slate-200 font-semibold text-xs text-slate-500 uppercase tracking-wider group relative hover:bg-slate-50 transition-colors"
+                className={`p-3 border-b border-r border-slate-200 font-semibold text-xs text-slate-500 uppercase tracking-wider group relative hover:bg-slate-50 transition-colors cursor-grab active:cursor-grabbing ${
+                  dragOverColIndex === colIdx ? 'border-l-2 border-l-indigo-500' : ''
+                } ${dragColIndex === colIdx ? 'opacity-50' : ''}`}
                 style={{ width: col.width || 240 }}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', colIdx.toString());
+                  setDragColIndex(colIdx);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dragColIndex !== null && colIdx !== dragColIndex) {
+                    setDragOverColIndex(colIdx);
+                  }
+                }}
+                onDragLeave={() => setDragOverColIndex(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragColIndex !== null && dragColIndex !== colIdx && onColumnReorder) {
+                    onColumnReorder(dragColIndex, colIdx);
+                  }
+                  setDragColIndex(null);
+                  setDragOverColIndex(null);
+                }}
+                onDragEnd={() => {
+                  setDragColIndex(null);
+                  setDragOverColIndex(null);
+                }}
               >
                 <div className="flex items-center justify-between">
                     <div className="flex flex-col">
