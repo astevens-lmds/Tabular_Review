@@ -16,6 +16,10 @@ const MODELS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Fastest', icon: Zap },
 ];
 
+const MAX_COLUMNS = 50;
+const MAX_DOCUMENTS = 200;
+const MAX_PROMPT_LENGTH = 5000;
+
 const App: React.FC = () => {
   // State
   const [documents, setDocuments] = useState<DocumentFile[]>([]);
@@ -44,6 +48,7 @@ const App: React.FC = () => {
   // Extraction Control
   const [isProcessing, setIsProcessing] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState<{ completed: number; total: number }>({ completed: 0, total: 0 });
   const abortControllerRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -61,6 +66,10 @@ const App: React.FC = () => {
   };
 
   const processUploadedFiles = async (fileList: File[]) => {
+    if (documents.length + fileList.length > MAX_DOCUMENTS) {
+      alert(`Cannot add ${fileList.length} files. Maximum is ${MAX_DOCUMENTS} documents (currently ${documents.length}).`);
+      return;
+    }
     setIsConverting(true);
     try {
         const processedFiles: DocumentFile[] = [];
@@ -86,7 +95,8 @@ const App: React.FC = () => {
         setDocuments(prev => [...prev, ...processedFiles]);
     } catch (error) {
         console.error("Failed to process files:", error);
-        alert("Error processing some files. Please check if they are valid PDF or DOCX documents.");
+        const message = error instanceof Error ? error.message : "Unknown error";
+        alert(`Error processing files: ${message}\n\nPlease check that the backend server is running and the files are valid.`);
     } finally {
         setIsConverting(false);
     }
@@ -154,6 +164,15 @@ const App: React.FC = () => {
   };
 
   const handleSaveColumn = (colDef: { name: string; type: ColumnType; prompt: string }) => {
+    // Validate limits
+    if (!editingColumnId && columns.length >= MAX_COLUMNS) {
+      alert(`Maximum of ${MAX_COLUMNS} columns allowed.`);
+      return;
+    }
+    if (colDef.prompt.length > MAX_PROMPT_LENGTH) {
+      alert(`Prompt is too long (${colDef.prompt.length} chars). Maximum is ${MAX_PROMPT_LENGTH} characters.`);
+      return;
+    }
     if (editingColumnId) {
       // Update existing column
       setColumns(prev => prev.map(c => c.id === editingColumnId ? { ...c, ...colDef } : c));
@@ -283,8 +302,10 @@ const App: React.FC = () => {
           }
       }
 
+      // Track progress
+      setExtractionProgress({ completed: 0, total: tasks.length });
+
       // 2. Process EVERYTHING concurrently (Simultaneous)
-      // Removed batching logic as requested to maximize speed
       const promises = tasks.map(async ({ doc, col }) => {
           if (controller.signal.aborted) return;
           try {
@@ -298,8 +319,10 @@ const App: React.FC = () => {
                       [col.id]: data
                   }
               }));
+              setExtractionProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
           } catch (e) {
               console.error(`Failed to extract ${col.name} for ${doc.name}`, e);
+              setExtractionProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
           }
       });
 
@@ -588,6 +611,23 @@ const App: React.FC = () => {
              )}
           </div>
         </header>
+
+        {/* Extraction Progress Bar */}
+        {isProcessing && extractionProgress.total > 0 && (
+          <div className="bg-white border-b border-slate-200 px-6 py-2">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div 
+                  className="bg-indigo-500 h-full rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${(extractionProgress.completed / extractionProgress.total) * 100}%` }}
+                />
+              </div>
+              <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                {extractionProgress.completed} / {extractionProgress.total} cells
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Workspace */}
         <main className="flex-1 flex overflow-hidden relative">

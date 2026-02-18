@@ -16,7 +16,7 @@ import {
   Trash2
 } from './Icons';
 
-const COLUMN_TYPES: { type: ColumnType; label: string; icon: React.FC<any> }[] = [
+const COLUMN_TYPES: { type: ColumnType; label: string; icon: React.FC<{ className?: string }> }[] = [
   { type: 'text', label: 'Text', icon: Type },
   { type: 'number', label: 'Number', icon: Hash },
   { type: 'date', label: 'Date', icon: Calendar },

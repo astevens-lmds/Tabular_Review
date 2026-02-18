@@ -7,11 +7,16 @@ import shutil
 
 app = FastAPI()
 
+# --- Configuration ---
+MAX_FILE_SIZE_MB = 50
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".json", ".pptx", ".xlsx"}
+
 # Configure CORS
 # In production, replace with specific origins
 origins = [
     "http://localhost:3000",
-    "http://localhost:5173", # Vite default
+    "http://localhost:5173",  # Vite default
 ]
 
 app.add_middleware(
@@ -25,33 +30,55 @@ app.add_middleware(
 # Initialize converter (this might take a moment to load models on startup)
 converter = DocumentConverter()
 
+
 @app.post("/convert")
 async def convert_document(file: UploadFile = File(...)):
+    # Validate filename
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Validate extension
+    suffix = os.path.splitext(file.filename)[1].lower()
+    if suffix not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{suffix}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
+
+    # Read file content with size check
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({len(content) / 1024 / 1024:.1f} MB). Maximum size is {MAX_FILE_SIZE_MB} MB."
+        )
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+
     try:
-        # Create a temporary file to save the uploaded content
-        # Docling needs a file path
-        suffix = os.path.splitext(file.filename)[1]
-        if not suffix:
-            suffix = ""
-            
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            shutil.copyfileobj(file.file, tmp)
+            tmp.write(content)
             tmp_path = tmp.name
 
         try:
-            # Convert the document
             result = converter.convert(tmp_path)
-            # Export to markdown
             markdown_content = result.document.export_to_markdown()
             return {"markdown": markdown_content}
         finally:
-            # Clean up the temporary file
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
-                
+
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error converting file: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Document conversion failed: {str(e)}")
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 
 if __name__ == "__main__":
     import uvicorn
