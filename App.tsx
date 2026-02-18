@@ -374,7 +374,7 @@ const App: React.FC = () => {
     processExtraction(documents, columns);
   };
 
-  const handleExport = (format: 'csv' | 'xlsx') => {
+  const handleExport = (format: 'csv' | 'xlsx' | 'pdf') => {
     if (documents.length === 0) return;
     batchExport({ documents, columns, results, projectName, format });
   };
@@ -696,9 +696,15 @@ const App: React.FC = () => {
                      </button>
                      <button
                        onClick={() => { handleExport('xlsx'); setIsExportMenuOpen(false); }}
-                       className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-xs font-medium text-slate-700"
+                       className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300"
                      >
                        Export as Excel
+                     </button>
+                     <button
+                       onClick={() => { handleExport('pdf'); setIsExportMenuOpen(false); }}
+                       className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300"
+                     >
+                       Export as PDF
                      </button>
                    </div>
                  </>
