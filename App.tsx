@@ -16,6 +16,7 @@ import { SAMPLE_COLUMNS } from './utils/sampleData';
 import { useTheme } from './hooks/useTheme';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
+import { BatchUploadProgress, UploadFileStatus } from './components/BatchUploadProgress';
 
 // Available Models
 const MODELS = [
@@ -78,6 +79,9 @@ const App: React.FC = () => {
 
   // Keyboard Shortcuts Help State
   const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
+
+  // Batch Upload Progress State
+  const [uploadProgress, setUploadProgress] = useState<UploadFileStatus[]>([]);
 
   // Keyboard Shortcuts
   useKeyboardShortcuts([
@@ -172,35 +176,50 @@ const App: React.FC = () => {
       return;
     }
     setIsConverting(true);
-    try {
-        const processedFiles: DocumentFile[] = [];
 
-        for (const file of fileList) {
-          // Use local deterministic processor (markitdown style)
-          const markdownContent = await processDocumentToMarkdown(file);
-          
-          // Encode to Base64 to match our storage format (mimicking the sample data structure)
-          // This keeps the rest of the app (which expects base64 strings for "content") happy
-          const contentBase64 = btoa(unescape(encodeURIComponent(markdownContent)));
+    // Initialize progress tracking for batch uploads
+    const fileStatuses: UploadFileStatus[] = fileList.map((file, i) => ({
+      id: `upload_${Date.now()}_${i}`,
+      name: file.name,
+      size: file.size,
+      status: 'pending' as const,
+    }));
+    setUploadProgress(fileStatuses);
 
-          processedFiles.push({
-            id: Math.random().toString(36).substring(2, 9),
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            content: contentBase64,
-            mimeType: 'text/markdown' // Force to markdown so the viewer treats it as text
-          });
-        }
+    const processedFiles: DocumentFile[] = [];
 
-        setDocuments(prev => [...prev, ...processedFiles]);
-    } catch (error) {
-        console.error("Failed to process files:", error);
-        const message = error instanceof Error ? error.message : "Unknown error";
-        alert(`Error processing files: ${message}\n\nPlease check that the backend server is running and the files are valid.`);
-    } finally {
-        setIsConverting(false);
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      
+      // Mark current file as converting
+      setUploadProgress(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'converting' } : f));
+
+      try {
+        const markdownContent = await processDocumentToMarkdown(file);
+        const contentBase64 = btoa(unescape(encodeURIComponent(markdownContent)));
+
+        processedFiles.push({
+          id: Math.random().toString(36).substring(2, 9),
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          content: contentBase64,
+          mimeType: 'text/markdown',
+        });
+
+        // Mark as done
+        setUploadProgress(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'done' } : f));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Failed to process ${file.name}:`, error);
+        setUploadProgress(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'error', error: message } : f));
+      }
     }
+
+    if (processedFiles.length > 0) {
+      setDocuments(prev => [...prev, ...processedFiles]);
+    }
+    setIsConverting(false);
   };
 
   const handleLoadSample = () => {
@@ -893,6 +912,12 @@ const App: React.FC = () => {
       <KeyboardShortcutsHelp
         isOpen={isShortcutsHelpOpen}
         onClose={() => setIsShortcutsHelpOpen(false)}
+      />
+
+      {/* Batch Upload Progress */}
+      <BatchUploadProgress
+        files={uploadProgress}
+        onClose={() => setUploadProgress([])}
       />
 
       {/* Project Manager Modal */}
