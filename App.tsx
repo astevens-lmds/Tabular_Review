@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { DataGrid } from './components/DataGrid';
 import { VerificationSidebar } from './components/VerificationSidebar';
 import { ChatInterface } from './components/ChatInterface';
@@ -22,6 +22,7 @@ import { PromptTemplateManager } from './components/PromptTemplateManager';
 import { ShareMenu } from './components/ShareMenu';
 import { logExtraction } from './services/extractionHistory';
 import { parseShareURL } from './services/sharingService';
+import { saveProjectState, loadProjectState, clearProjectState, ProjectState } from './services/persistence';
 
 // Available Models
 const MODELS = [
@@ -183,6 +184,29 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Load persisted state on mount
+  useEffect(() => {
+    loadProjectState().then((state) => {
+      if (state) {
+        setProjectName(state.projectName);
+        setDocuments(state.documents);
+        setColumns(state.columns.map(c => ({ ...c, status: c.status === 'extracting' ? 'idle' : c.status })));
+        setResults(state.results);
+        if (state.selectedModel) setSelectedModel(state.selectedModel);
+      }
+    });
+  }, []);
+
+  // Auto-save state on changes (debounced)
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    saveTimeout.current = setTimeout(() => {
+      saveProjectState({ projectName, documents, columns, results, selectedModel });
+    }, 500);
+    return () => { if (saveTimeout.current) clearTimeout(saveTimeout.current); };
+  }, [projectName, documents, columns, results, selectedModel]);
+
   // Handlers
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
@@ -282,6 +306,9 @@ const App: React.FC = () => {
     setProjectName('Untitled Project');
     setAddColumnAnchor(null);
     setEditingColumnId(null);
+    
+    // Clear persisted state
+    clearProjectState();
 
     // Reset file input
     if (fileInputRef.current) {
